@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>WebSocket Chat</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+
+        #messages {
+            border: 1px solid #ccc;
+            height: 300px;
+            overflow-y: auto;
+            padding: 5px;
+            margin-bottom: 10px;
+        }
+
+        input {
+            width: 80%;
+            padding: 5px;
+        }
+
+        button {
+            padding: 5px;
+        }
+
+        .message {
+            margin-bottom: 8px;
+        }
+
+        .meta {
+            font-size: 0.8em;
+            color: #666;
+        }
+
+        .copy-btn {
+            margin-left: 5px;
+            font-size: 0.75em;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>WebSocket Chat</h2>
+    <div id="status">接続中のクライアント数: -- 人</div>
+    <div id="messages"></div>
+    <input id="messageInput" type="text" placeholder="Type a message..." />
+    <button onclick="sendMessage()">Send</button>
+
+    <script>
+        const ws = new WebSocket(`ws://${location.host}`);
+        const messagesDiv = document.getElementById('messages');
+        const input = document.getElementById('messageInput');
+        const statusDiv = document.getElementById('status');
+        const clientName = getClientName();
+
+        function getClientName() {
+            const ua = navigator.userAgent;
+            let os = 'Unknown OS';
+            let browser = 'Unknown Browser';
+
+            if (ua.includes('Windows')) os = 'Windows';
+            else if (ua.includes('Mac')) os = 'macOS';
+            else if (ua.includes('Linux')) os = 'Linux';
+            else if (ua.includes('Android')) os = 'Android';
+            else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+
+            if (ua.includes('Chrome')) browser = 'Chrome';
+            else if (ua.includes('Safari')) browser = 'Safari';
+            else if (ua.includes('Firefox')) browser = 'Firefox';
+            else if (ua.includes('Edge')) browser = 'Edge';
+
+            return `${os} / ${browser}`;
+        }
+
+        function linkify(text) {
+            const urlRegex = /https?:\/\/[^\s]+/g;
+            return text.replace(urlRegex, (url) => {
+                const escaped = url.replace(/"/g, '&quot;');
+                return `<a href="${escaped}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+            });
+        }
+
+        ws.onmessage = async (event) => {
+            // すべてをテキストに変換（BlobやStringでも対応可能）
+            const rawData = await event.data.text?.() ?? event.data;
+
+            // クライアント数更新の場合（JSON形式）
+            try {
+                const json = JSON.parse(rawData);
+                if (json.type === 'clientCount') {
+                    statusDiv.textContent = `接続中のクライアント数: ${json.count}人`;
+                    return;
+                }
+            } catch (e) {
+                // 無視（普通のメッセージとして処理）
+            }
+
+            // 通常のメッセージ処理
+            const now = new Date();
+            const time = now.toLocaleTimeString('ja-JP', { hour12: false });
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'message';
+
+            const displayText = document.createElement('div');
+            displayText.innerHTML = linkify(rawData);
+
+            const match = rawData.match(/^\[.*?\]\s(.*)$/);
+            const messageBody = match ? match[1] : rawData;
+
+            const meta = document.createElement('div');
+            meta.className = 'meta';
+            meta.textContent = `${time}`;
+
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'copy-btn';
+            copyBtn.textContent = 'コピー';
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(messageBody);
+                copyBtn.textContent = '✓ コピー済';
+                setTimeout(() => copyBtn.textContent = 'コピー', 1500);
+            };
+
+            wrapper.appendChild(displayText);
+            wrapper.appendChild(meta);
+            wrapper.appendChild(copyBtn);
+            messagesDiv.appendChild(wrapper);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        };
+
+
+        function sendMessage() {
+            const text = input.value.trim();
+            if (text) {
+                const message = `[${clientName}] ${text}`;
+                ws.send(message);
+                input.value = '';
+            }
+        }
+
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+
+</html>
